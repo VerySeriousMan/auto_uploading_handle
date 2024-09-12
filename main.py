@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-Project Name: auto_upload_training
+Project Name: auto_upload_handle
 File Created: 2024.09.11
 Author: ZhangYuetao
 File Name: main.py
-last update： 2024.09.11
+last update： 2024.09.12
 """
 
 import time
@@ -55,12 +55,12 @@ class Watcher:
         ready_processor.start()
 
     def stop(self):
+        # 发出停止信号给所有线程
+        self.stop_event.set()
+
         # 停止 Observer 和所有线程
         self.observer.stop()
         self.observer.join()
-
-        # 发出停止信号给所有线程
-        self.stop_event.set()
 
         # 停止所有处理线程
         for thread in self.threads:
