@@ -4,7 +4,7 @@ Project Name: auto_upload_handle
 File Created: 2024.09.11
 Author: ZhangYuetao
 File Name: ready_queues.py
-last update： 2024.09.11
+last update： 2024.09.13
 """
 
 import os
@@ -12,9 +12,10 @@ import time
 
 
 class ReadyQueueProcess:
-    def __init__(self, pre_queue, ready_queue, stop_event, max_retries=3):
+    def __init__(self, pre_queue, ready_queue, logger, stop_event, max_retries=3):
         self.pre_queue = pre_queue
         self.ready_queue = ready_queue
+        self.logger = logger
         self.stop_event = stop_event  # 用于控制线程停止
         self.max_retries = max_retries  # 最大重试次数
 
@@ -26,16 +27,16 @@ class ReadyQueueProcess:
                 file_path, retry_count = file_info if isinstance(file_info, tuple) else (file_info, 0)
 
                 if self._is_file_complete(file_path):
-                    print(f"File ready: {file_path}")
+                    self.logger.info(f"File ready: {file_path}")
                     self.ready_queue.put(file_path)  # 将文件路径放入就绪队列
                 else:
                     if retry_count < self.max_retries:
                         retry_count += 1
-                        print(f"File incomplete: {file_path}, retrying ({retry_count}/{self.max_retries})")
+                        self.logger.info(f"File incomplete: {file_path}, retrying ({retry_count}/{self.max_retries})")
                         # 将文件重新放回队列，并增加重试次数
                         self.pre_queue.put((file_path, retry_count))
                     else:
-                        print(f"File incomplete after {self.max_retries} retries: {file_path}, skipping...")
+                        self.logger.info(f"File incomplete after {self.max_retries} retries: {file_path}, skipping...")
             time.sleep(1)  # 避免过度占用CPU
 
     @staticmethod

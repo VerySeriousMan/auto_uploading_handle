@@ -4,7 +4,7 @@ Project Name: auto_upload_handle
 File Created: 2024.09.11
 Author: ZhangYuetao
 File Name: pre_queues.py
-last update： 2024.09.12
+last update： 2024.09.13
 """
 
 import os
@@ -14,8 +14,9 @@ from watchdog.events import FileSystemEventHandler
 
 
 class PreQueueProcess(FileSystemEventHandler):
-    def __init__(self, pre_queue, cleanup_interval=10, event_ignore_interval=2):
+    def __init__(self, pre_queue, logger, cleanup_interval=10, event_ignore_interval=2):
         self.pre_queue = pre_queue
+        self.logger = logger
         self.last_event_times = {}  # 记录每个文件的上次事件时间
         self.cleanup_interval = cleanup_interval  # 清理过期记录的时间间隔（秒）
         self.event_ignore_interval = event_ignore_interval  # 创建/修改后忽略事件的时间间隔
@@ -25,29 +26,29 @@ class PreQueueProcess(FileSystemEventHandler):
         # 当新文件或文件夹创建时触发
         if not os.path.basename(event.src_path).startswith('.goutputstream-'):  # 排除替换时产生的临时文件
             if event.is_directory:
-                print(f"New directory detected: {event.src_path}")
+                self.logger.info(f"New directory detected: {event.src_path}")
                 self._dir_put_queue(event.src_path)
             else:
                 # 调用防重复机制，避免短时间内重复处理
                 if not self._should_process_file(event.src_path):
-                    print(f"Ignoring create file: {event.src_path}")
+                    self.logger.debug(f"Ignoring create file: {event.src_path}")
                     return
 
-                print(f"New file loading: {event.src_path}")
+                self.logger.info(f"New file loading: {event.src_path}")
                 self.pre_queue.put((event.src_path, 0))  # 将新文件路径放入队列
                 self.last_event_times[event.src_path] = time.time()  # 记录文件创建时间
 
     def on_modified(self, event):
         # 当文件或文件夹被修改时触发
         if event.is_directory:
-            print(f"Directory modified: {event.src_path}")
+            self.logger.info(f"Directory modified: {event.src_path}")
         else:
             # 调用防重复机制，避免短时间内重复处理
             if not self._should_process_file(event.src_path):
-                print(f"Ignoring modification right after creation: {event.src_path}")
+                self.logger.debug(f"Ignoring modification right after creation: {event.src_path}")
                 return
 
-            print(f"File modified: {event.src_path}")
+            self.logger.info(f"File modified: {event.src_path}")
             self.pre_queue.put((event.src_path, 0))  # 将修改后的文件放入队列重新处理
 
             # 定期清理过期的记录
@@ -56,16 +57,29 @@ class PreQueueProcess(FileSystemEventHandler):
     def on_moved(self, event):
         # 当文件或文件夹被重命名或移动时触发
         if event.is_directory:
-            print(f"Directory moved or renamed from {event.src_path} to {event.dest_path}")
+            self.logger.info(f"Directory moved or renamed from {event.src_path} to {event.dest_path}")
         else:
-            print(f"File moved or renamed from {event.src_path} to {event.dest_path}")
+            # # 防止相同文件被重复处理，但允许不同路径的修改
+            # if event.src_path in self.last_event_times and event.dest_path in self.last_event_times:
+            #     if self.last_event_times[event.src_path] < self.last_event_times[event.dest_path]:
+            #         # 如果短时间内发生了两次相同的移动操作，忽略第二次
+            #         print(f"Ignoring move: {event.src_path} to {event.dest_path}")
+            #         return
+
+            self.logger.info(f"File moved or renamed from {event.src_path} to {event.dest_path}")
+            self.pre_queue.put((event.dest_path, 0))
+            self.last_event_times[event.dest_path] = time.time()
+            self.logger.info(f"File moved or renamed,redo: {event.dest_path}")
+
+            # 定期清理过期的记录
+            self._cleanup_old_entries()
 
     def on_deleted(self, event):
         # 当文件或文件夹被删除时触发
         if event.is_directory:
-            print(f"Directory deleted: {event.src_path}")
+            self.logger.info(f"Directory deleted: {event.src_path}")
         else:
-            print(f"File deleted: {event.src_path}")
+            self.logger.info(f"File deleted: {event.src_path}")
 
     def _should_process_file(self, file_path):
         """
@@ -121,9 +135,9 @@ class PreQueueProcess(FileSystemEventHandler):
 
                 # 调用防重复机制，避免短时间内重复处理
                 if not self._should_process_file(file_path):
-                    print(f"Ignoring create file in directory: {file_path}")
+                    self.logger.debug(f"Ignoring create file in directory: {file_path}")
                     return
 
-                print(f"File in new directory loading: {file_path}")
+                self.logger.info(f"File in new directory loading: {file_path}")
                 self.pre_queue.put((file_path, 0))  # 将文件路径放入队列
                 self.last_event_times[file_path] = time.time()  # 记录文件创建时间

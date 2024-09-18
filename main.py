@@ -4,7 +4,7 @@ Project Name: auto_upload_handle
 File Created: 2024.09.11
 Author: ZhangYuetao
 File Name: main.py
-last update： 2024.09.12
+last update： 2024.09.13
 """
 
 import time
@@ -15,6 +15,7 @@ from watchdog.observers import Observer
 
 from pre_queues import PreQueueProcess
 from ready_queues import ReadyQueueProcess
+from logger import setup_logger
 
 
 class Watcher:
@@ -26,10 +27,11 @@ class Watcher:
         self.ready_thread_nums = ready_thread_nums  # 就绪队列处理线程的数量
         self.threads = []  # 存储线程的列表
         self.stop_event = threading.Event()  # 用于通知线程停止
+        self.logger = setup_logger()
 
     def run(self):
         # 创建并启动文件夹监听器
-        event_handler = PreQueueProcess(self.pre_queue)
+        event_handler = PreQueueProcess(self.pre_queue, self.logger)
         self.observer.schedule(event_handler, self.directory_to_watch, recursive=True)
         self.observer.start()
 
@@ -41,17 +43,17 @@ class Watcher:
 
         try:
             # 持续运行，保持监听
-            print("Press Ctrl+C to stop the observer...")
+            self.logger.info("Observer started. Press Ctrl+C to stop...")
             while True:
                 time.sleep(1)
         except KeyboardInterrupt:
-            print("Stopping observer...")
+            self.logger.info("Stopping observer...")
         finally:
             self.stop()
 
     def ready_processor_thread(self):
         """就绪队列处理线程逻辑"""
-        ready_processor = ReadyQueueProcess(self.pre_queue, self.ready_queue, self.stop_event)
+        ready_processor = ReadyQueueProcess(self.pre_queue, self.ready_queue, self.logger, self.stop_event)
         ready_processor.start()
 
     def stop(self):
@@ -70,13 +72,13 @@ class Watcher:
 
     def print_queues(self):
         # 输出传入队列和就绪队列中的全部数据
-        print("Input Queue contents:")
+        self.logger.info("Input Queue contents:")
         while not self.pre_queue.empty():
-            print(self.pre_queue.get())
+            self.logger.info(self.pre_queue.get())
 
-        print("Ready Queue contents:")
+        self.logger.info("Ready Queue contents:")
         while not self.ready_queue.empty():
-            print(self.ready_queue.get())
+            self.logger.info(self.ready_queue.get())
 
 
 if __name__ == "__main__":
